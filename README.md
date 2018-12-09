@@ -24,13 +24,13 @@ Data for Quantum Tomography with Born Machine, in support of our work [arXiv:171
     - Using measurement outcomes in `./errRobust/MeasOutcomes/[type]/[N]/[noise]/`
   - Resulting fidelity sequences are in the folders `[type][N]/[noise]/`
   - `elist.npy` includes the values of noisy level we considered.
-- `MeasOutcomes/` includes raw outcomes of simulated measurements. 
+- `./MeasOutcomes/` includes raw outcomes of simulated measurements. 
   - `prep.py` measures the typical states and stores the results in:
   -  `[type]/[N]/R[seed]Set.pickle`, which pickles the outcomes from the state of `[type]` and length  `[N]` in the random case initiated by `[seed]`, the state being stored as  `[type]/[N]/stdmps.pickle`
   - `Random/`
     - `prep_Rand.py` measures the random states and stores the results in:
     -  `[Dmax]/[N]/[seed]/R[seed]Set.pickle`, which pickles the outcomes from the  random state (by `[seed]`) whose Dmax is `[Dmax]` and length is `[N]` in the random case initiated by `[seed]`, the state being stored as  `[type]/[N]/[seed]/stdmps.pickle`
-- `WorkSpace.ipynb` is the Jupyter Notebook where the results are analyzed and plotted
+- `./WorkSpace.ipynb` is the Jupyter Notebook where the results are analyzed and plotted
 
 ## Note
 
