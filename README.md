@@ -34,4 +34,7 @@ Data for Quantum Tomography with Born Machine, in support of our work [arXiv:171
 
 ## Note
 
-* Due to the big volume of the outcomes, we only uploaded some of the training sets we used in the numerical experiments mentioned in our manuscript, yet the scripts `pre*.py` suffice the generation of all the training data.
+* Due to the big volume of the outcomes, we only uploaded some of the training sets (measurement outcomes) we used in the numerical experiments mentioned in our manuscript, yet the scripts `prep*.py` for each experiment suffice the generation of all the training data.
+* Of course one could iteratively measure and train, which is a more faithful simulation of the process of our scheme. We store these measurement outcomes in advance simply because in this way:
+  1. They can be reused.
+  2. Comparison between different hyper parameter configurations become reasonable.
