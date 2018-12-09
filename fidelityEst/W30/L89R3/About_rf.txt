@@ -1,5 +1,0 @@
-Criterion for 0.999 per site = 0.9704309672630858
-Last real_fidelity = 0.999425273368
-Meets the criterion? True
-For the 1st time the criterion was met: 52
-At that time, rf= 0.97368367705
