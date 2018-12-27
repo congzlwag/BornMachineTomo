@@ -1,0 +1,7 @@
+Present State of MPS:
+space_size=39	,cutoff=0.2000000000	,lr=0.100000
+bond dimension:[2, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 3, 3, 3, 3, 3, 3, 3, 4, 3, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 3, 2, 2, 1]	loss=2.318881e+01
+cutoff	n_loop	n_descent	learning_rate
+2.00e-01	1	10	1.00e-01
+2.00e-01	1	10	1.00e-01
+Present set_size:160

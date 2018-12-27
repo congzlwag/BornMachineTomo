@@ -1,0 +1,17 @@
+Present State of MPS:
+space_size=11	,cutoff=0.1000000000	,lr=0.100000
+bond dimension:[1, 1, 2, 3, 3, 2, 1, 1, 1, 1, 1]	loss=8.490978e+01
+cutoff	n_loop	n_descent	learning_rate
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+1.00e-01	1	10	1.00e-01
+Present set_size:36
+Present setting_number:23
