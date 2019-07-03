@@ -210,6 +210,19 @@ class MPS:
 			self.matrices.append(righttwo)
 			self.matrices.append(rightone)
 		
+		elif initial_state_type == 'Neel':
+			self.bondims = [1]*self._n
+			self.matrices = []
+			odd = np.zeros((1,2,1))
+			odd[0,1,0] = 1
+			eve = np.zeros((1,2,1))
+			eve[0,0,0] = 1
+			for i in range(self._n):
+				if i%2==0:
+					self.matrices.append(eve)
+				else:
+					self.matrices.append(odd)
+			
 		self.id_uncanonical = None
 		"""pointer to the A-tensor
 		None: neither right-canon nor left-canon, need canonicalization
