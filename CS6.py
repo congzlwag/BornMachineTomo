@@ -18,6 +18,9 @@ import pickle
 import os
 import sys
 
+import sympy
+from sympy.physics.quantum.spin import Rotation
+
 def normalize(tens):
 	tens /= norm(tens)
 
@@ -36,6 +39,7 @@ class MPS:
 	"""
 	def __init__(self, space_size, initial_state_type, **kwarg):
 		self._n = space_size
+		self._q = 2
 		self.cutoff = 0.01
 		self.Dmin = 2
 		if 'Dmin' in kwarg:
@@ -50,8 +54,9 @@ class MPS:
 				self.bondims = [init_bond_dimension] * self._n ## bond[i] connect i i+1
 			self.bondims[-1] = 1
 			self.matrices = []
+			self._q = kwarg['q']
 			for i in range(space_size):
-				self.matrices.append(randn(self.bondims[i-1], 2, self.bondims[i]) + rand(self.bondims[i-1], 2, self.bondims[i]) * 1.j)
+				self.matrices.append(randn(self.bondims[i-1], self._q, self.bondims[i]) + randn(self.bondims[i-1], kwarg['q'], self.bondims[i]) * 1.j)
 			if initial_state_type == "randomforTFIM":
 				self.H = kwarg['H']
 
@@ -204,11 +209,27 @@ class MPS:
 			self.matrices = []
 			self.matrices.append(leftone)
 			self.matrices.append(lefttwo)
-			N = self._n
-			for i in range(N - 4):
+			for i in range(self._n - 4):
 				self.matrices.append(bulk)
 			self.matrices.append(righttwo)
 			self.matrices.append(rightone)
+
+		elif initial_state_type == 'AKLT':
+			self._q = 3
+			self.bondims = [2]*self._n
+			self.bondims[-1] = 1
+			bulk = np.zeros((2,3,2),dtype='d')
+			bulk[1,0,0] = 2**(-0.5)
+			bulk[0,1,0] = 0.5
+			bulk[1,1,1] = -0.5
+			bulk[0,2,1] = -2**(-0.5)
+			
+			self.matrices = []
+			self.matrices.append(bulk[[1],:,:].copy()) # left spin1/2 edge state = \up
+			for j in range(self._n - 2):
+				self.matrices.append(bulk)
+			self.matrices.append(bulk[:,:,[1]].copy()) # right spin1/2 edge state = \down
+
 		
 		elif initial_state_type == 'Neel':
 			self.bondims = [1]*self._n
@@ -273,10 +294,11 @@ class MPS:
 		if keep_bondim:
 			bdm = min(self.bondims[self.merged_bond], s.size)
 		else:
-			while bdm < s.size and s[bdm] >= s[0] * self.cutoff:
+			bdmM = s.size if self.Dmax is None else min(s.size, self.Dmax)
+			while bdm < bdmM and s[bdm] >= s[0] * self.cutoff:
 				bdm += 1
-		if self.Dmax is not None and self.Dmax < bdm:
-			bdm = self.Dmax
+		# if self.Dmax is not None and self.Dmax < bdm:
+		# 	bdm = self.Dmax
 		s = diag(s[:bdm])
 		U = U[:, :bdm]
 		V = V[:bdm, :]
@@ -290,8 +312,8 @@ class MPS:
 			if self.id_uncanonical is not None: self.id_uncanonical = self.merged_bond
 		
 		self.bondims[self.merged_bond] = bdm
-		self.matrices[self.merged_bond] = reshape(U, (self.bondims[(self.merged_bond - 1) % self._n], 2, bdm))
-		self.matrices[(self.merged_bond + 1)] = reshape(V, (bdm, 2, self.bondims[(self.merged_bond + 1)]))
+		self.matrices[self.merged_bond] = reshape(U, (self.bondims[(self.merged_bond - 1) % self._n], self._q, bdm))
+		self.matrices[(self.merged_bond + 1)] = reshape(V, (bdm, self._q, self.bondims[(self.merged_bond + 1)]))
 		self.merged_bond = None
 		self.merged_matrix=None
 		return diag(s)
@@ -308,69 +330,45 @@ class MPS:
 	def rightCano(self):
 		if self.merged_bond is not None:
 			self.rebuildBond(False)
-		start = self.id_uncanonical if self.id_uncanonical is not None else self._n-2
+		start = self.id_uncanonical-1 if self.id_uncanonical is not None else self._n-2
 		for bond in range(start, -1, -1):
 			self.mergeBond(bond)
 			self.rebuildBond(False, keep_bondim=True)
 		self.id_uncanonical = 0
 
-	# def genSample(self,spinor_setting):
-	# 	v = ones((1,),dtype=complex)
-	# 	restate = 0
-	# 	pointer = self._n - 1
-	# 	while pointer >= 0:
-	# 		restate *= 2
-	# 		nv = [dot(dot(self.matrices[pointer],v),spinor_setting[pointer,i]) for i in range(2)]
-	# 		p = [norm(nv[i]) ** 2 for i in range(2)]
-	# 		if rand() < p[1] / (p[0] + p[1]):
-	# 			restate += 1
-	# 			v = nv[1]
-	# 		else:
-	# 			v = nv[0]
-	# 		pointer -= 1
-	# 		normalize(v)
-	# 	return restate
 	def genSample(self, spinor_setting):
-		respin = zeros((self._n,2), complex)
+		respin = zeros((self._n,self._q), complex)
 		restate = 0
-		if self.id_uncanonical is not None:
-			p_unnorm = self.id_uncanonical
-			assert p_unnorm<self._n and p_unnorm>=0
-			# sampling order: p_unnorm, p_unnorm-1,...,0, p_unnorm+1,p_unnorm+2,...,N-1
-			mat = dot(spinor_setting[p_unnorm,1], self.matrices[p_unnorm])
-			mat1_norm = norm(mat)
-			if rand() < mat1_norm**2:
-				respin[p_unnorm,:] = spinor_setting[p_unnorm,1,:]
-				restate += 1<<p_unnorm
-				mat /= mat1_norm
-			else:
-				respin[p_unnorm,:] = spinor_setting[p_unnorm,0,:]
-				mat = dot(spinor_setting[p_unnorm,0], self.matrices[p_unnorm])
-				mat /= norm(mat)
-			for p in range(p_unnorm-1,-1,-1):
-				nmat1 = dot(dot(spinor_setting[p,1],self.matrices[p]),mat)
-				mat1_norm = norm(nmat1)
-				if rand() < mat1_norm**2:
-					respin[p,:] = spinor_setting[p,1,:]
-					restate += 1<<p
-					mat = nmat1/mat1_norm
-				else:
-					respin[p,:] = spinor_setting[p,0,:]
-					mat = dot(dot(spinor_setting[p,0],self.matrices[p]),mat)
-					mat /= norm(mat)
-			for p in range(p_unnorm+1,self._n):
-				nmat1 = dot(mat,dot(spinor_setting[p,1],self.matrices[p]))
-				mat1_norm = norm(nmat1)
-				if rand() < mat1_norm**2:
-					respin[p,:] = spinor_setting[p,1,:]
-					restate += 1<<p
-					mat = nmat1/mat1_norm
-				else:
-					respin[p,:] = spinor_setting[p,0,:]
-					mat = dot(mat,dot(spinor_setting[p,0],self.matrices[p]))
-					mat /= norm(mat)
-		else:
-			raise ValueError("Uncanonical MPS cannot genSample")
+		assert self.id_uncanonical is not None
+		p_unnorm = self.id_uncanonical
+		assert p_unnorm<self._n and p_unnorm>=0
+		# sampling order: p_unnorm, p_unnorm-1,...,0, p_unnorm+1,p_unnorm+2,...,N-1
+		for stag, rang in enumerate([[p_unnorm],range(p_unnorm-1,-1,-1),range(p_unnorm+1,self._n)]):
+			for pt in rang:
+				mats_r = [dot(spinor_setting[pt,rm], self.matrices[pt]) for rm in range(self._q)]
+				if stag == 1: # range(p_unnorm-1,-1,-1) accumulate from left
+					mats_r = [dot(m, mat) for m in mats_r]
+				elif stag ==2: # range(p_unnorm+1,self._n) accumulate from right
+					mats_r = [dot(mat, m) for m in mats_r]
+				norm2_mats_r = np.array([norm(m)**2 for m in mats_r])
+				try:
+					assert abs(norm2_mats_r.sum()-1)<1e-13
+				except:
+					raise ValueError('stag = %d, pt = %d, norm2_mat_r.sum() = %f'%(stag,pt,norm2_mats_r.sum()))
+				rm = int(np.random.choice(np.arange(self._q),1,p=norm2_mats_r))
+				if rm > 0:
+					restate += rm*(self._q**pt)
+				mat = mats_r[rm]/(norm2_mats_r[rm]**0.5)
+				# else:
+				# 	mat_p = dot(spinor_setting[pt,0], self.matrices[pt])
+				# 	if stag == 0:
+				# 		mat = mat_p
+				# 	elif stag == 1:
+				# 		mat = dot(mat_p, mat)
+				# 	elif stag == 2:
+				# 		mat = dot(mat, mat_p)
+				# 	mat /= norm(mat)
+				respin[pt,:] = spinor_setting[pt,rm,:]
 		return restate, respin
 		
 	def giveFidelity(self, mats, persite=False):
@@ -378,6 +376,7 @@ class MPS:
 		assert self.merged_bond is None
 		if isinstance(mats, MPS):
 			mats = mats.matrices
+		assert self._q == mats[0].shape[1]
 		p = self._n - 1
 		res = dot(self.matrices[p][:,:,0],mats[p].conj())[:,:,0]
 		while p>0:
@@ -441,19 +440,24 @@ class MPS:
 
 class ProjMeasureSet:
 	"""
-Outcomes of Projective Measurements
-You can either assign an MPS as generator or give the (spinor_settings, states) lists
-If an MPS is given, available measuring modes: uniform/2n+1/onlyZ/dynamic
-Attribute:
-	noise: the noise level in the measurement. It's the probability that a random outcome is obtained
+	Outcomes of Projective Measurements
+	You can either assign an MPS as generator or give the (spinor_settings, states) lists
+	If an MPS is given, available measuring modes: uniform/2n+1/onlyZ/dynamic
+	Attribute:
+		noise: the noise level in the measurement. It's the probability that a random outcome is obtained
 	"""
-	def __init__(self, space_size, init_set_size=0, mode='uniform', mps=None, noise=0):
+	def __init__(self, space_size, init_set_size=0, mode='uniform', mps=None, noise=0, **kwarg):
 		self.__n = space_size
 		self.__mps = mps
-		# self.states = []
+		if mps is None:
+			self._q = kwarg['q']
+		else:
+			self._q = self.__mps._q
 		self.spinor_outcomes = []
 		self.setMode(mode)
 		self.noise = noise
+		
+		self.__prepare_WignerD_alpha0()
 		if init_set_size > 0:
 			self.measureUpTo(init_set_size)
 
@@ -470,7 +474,7 @@ Attribute:
 	def _singlemeas(self):
 		setting = self.__gen_setting()
 		if self.noise > 0 and rand() < self.noise:
-			binoutcome = randint(0,2,self.__n)
+			binoutcome = randint(0,self._q,self.__n)
 			return asarray([setting[j,binoutcome[j]] for j in range(self.__n)])
 		else:
 			return self.__mps.genSample(setting)[1]
@@ -485,27 +489,48 @@ Attribute:
 		else:
 			raise ValueError("Unknown measuring mode %s"%mod)
 	
+	def __prepare_WignerD_alpha0(self):
+		s = sympy.S(self._q-1)/2
+		theta,phi,c = sympy.symbols('theta phi c')
+		Ds = sympy.Array([[Rotation.D(s,s-i,s-j,0,-theta,-phi).doit() for j in range(self._q)] for i in range(self._q)])
+		# Ds = Ds.subs(theta,sympy.acos(c))
+		self.__WignerD_alpha0 = sympy.lambdify((theta,phi),Ds,'numpy')
+
 	def uniforMeas(self):
-		setting = empty((self.__n, 2,2),dtype=complex)
-		c = rand(self.__n)*2-1
-		c1 = (0.5*(1+c))**0.5 #cos(theta/2)
-		s1 = (0.5*(1-c))**0.5 #sin(theta/2)
+		theta = arccos(rand(self.__n)*2-1)
 		phi = rand(self.__n) * pi
-		phas= exp(1.0j*phi)
-		setting[:,0,0] = c1
-		setting[:,0,1] = s1*phas
-		setting[:,1,0] = -s1*phas.conj()
-		setting[:,1,1] = c1
+		Dmats = self.__WignerD_alpha0(theta,phi)
+		setting = empty((self.__n, self._q,self._q),dtype=complex)
+		for i in range(self._q):
+			for j in range(self._q):
+				setting[:,i,j] = Dmats[i][j][:]
+		# if self.__mps._q == 2:
+		# 	c1 = (0.5*(1+c))**0.5 #cos(theta/2)
+		# 	s1 = (0.5*(1-c))**0.5 #sin(theta/2)
+		# 	phas= exp(1.0j*phi)
+		# 	setting = empty((self.__n, 2,2),dtype=complex)
+		# 	setting[:,0,0] = c1
+		# 	setting[:,0,1] = s1*phas
+		# 	setting[:,1,0] = -s1*phas.conj()
+		# 	setting[:,1,1] = c1
+		# elif self.__mps._q == 3:
+		# 	s = (1-c**2)**0.5
+		# 	setting = empty((self.__n, 3,3),dtype=complex)
+		# 	setting[:,0,0] = 0.5*(1+c)
+		# 	setting[:,2,2] = setting[:,0,0]
+		# 	setting[:,1,1] = c
+		# 	setting[:,1,0] = -s/(2**0.5)*exp(1.0j*phi)
+		# 	setting[:,0,1] = -setting[:,1,0].conj()
+		# 	setting[:,2,1] = setting[:,1,0]
+		# 	setting[:,1,2] = -setting[:,2,1].conj()
+		# 	setting[:,2,0] = 0.5*(1-c)*exp(1.0j*phi*2)
+		# 	setting[:,0,2] = setting[:,2,0].conj()
 		return setting
-		# binstate, spinor_state = self.__mps.genSample(setting)
-		# return spinor_state
 
 	def zzMeas(self):
-		setting = empty((self.__n, 2,2),dtype=int8)
-		setting[:,0,0] = 1
-		setting[:,1,1] = 1
-		setting[:,1,0] = 0
-		setting[:,0,1] = 0
+		setting = np.zeros((self.__n, self.__mps._q,self.__mps._q),dtype=int8)
+		for m in range(self.__mps._q):
+			setting[:,m,m] = 1
 		return setting
 
 	# def dynaMeas(self, discriminator):
@@ -525,7 +550,7 @@ Attribute:
 
 	def __getstate__(self):
 		""" Return a dictionary of state values to be pickled """
-		exclusion=['_ProjMeasureSet__mps']
+		exclusion=['_ProjMeasureSet__mps','_ProjMeasureSet__WignerD_alpha0']
 		mydict={}
 		for key in self.__dict__.keys():
 			if key not in exclusion:
@@ -579,6 +604,7 @@ Attribute:
 			mps_name = '/'+mps_name
 		with open(mps_name,'rb') as fmps:
 			self._ProjMeasureSet__mps = pickle.load(fmps)
+			self.__prepare_WignerD_alpha0()
 
 # class Discriminator:
 # 	def __init__(self, space_size, lr=2e-3):
@@ -607,7 +633,7 @@ so when loading, dat need extra attaching, using attach_dat
 	"""
 	def __init__(self, dataset, batch_size=40, initV=80, add_mode=True, **kwarg):
 		if kwarg == {}:
-			MPS.__init__(self, dataset.getN(), 'random')
+			MPS.__init__(self, dataset.getN(), 'random', q=dataset._q)
 		else:
 			MPS.__init__(self, dataset.getN(), **kwarg)
 		self.leftCano()
@@ -728,7 +754,7 @@ so when loading, dat need extra attaching, using attach_dat
 
 	def _neGrad(self):
 		"""negative gradient"""
-		conjgrad = zeros((self.bondims[(self.merged_bond - 1) % self._n], 2, 2, self.bondims[(self.merged_bond + 1) % self._n]), dtype=complex)
+		conjgrad = zeros((self.bondims[(self.merged_bond - 1) % self._n], self._q, self._q, self.bondims[(self.merged_bond + 1) % self._n]), dtype=complex)
 		k = self.merged_bond
 		# kp1 = (k+1)%self._n
 		# km1 = (k-1)%self._n
